@@ -1,0 +1,266 @@
+---
+title: "MS&E 226 Mini-Project Part 2"
+author: "Samuel Hansen & Sarah Rosston"
+date: "11/13/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+# Initialize libraries
+library(stringr)
+library(hydroGOF)
+library(lubridate)
+library(knitr)
+library(caret)
+library(tidyverse)
+# Define input file
+file_in <- "../data/train.csv"
+```
+
+```{r}
+# Read in data
+df <- read_csv(file_in) %>%
+  dmap_at("date", ~ymd(.x))
+```
+
+#Summary 
+
+In part 2 of our mini-project, we built regression and classification models of 
+`home price`. Our report describes the steps we took for data cleaning, 
+pre-processing, feature selection, model fitting, and evaluation. 
+
+#Data Cleaning
+
+This section describes the steps we took to engineer features, include 
+external variables, split, and preprocess our data prior to model building.
+
+##Feature Engineering 
+Prior to model building, we engineered the following features from 
+raw values:
+
+1) Years since renovation: `renovation_year` - `year_built`
+2) House age at time of sale: `sale_year` - `year_built`
+3) Season of sale: Fall (9 <= `sale_month` <= 12), Winter (1 <= `sale_month` <= 4), etc.
+4) Yard size: `sqft_lot` - `sqft_living`
+5) Price per square foot: `price/sqft_living`
+6) Ratio of house size to sizes of 15 neighboring houses: `sqft_living`/`sqft_living15`
+
+```{r}
+df <- df %>%
+  # Recode "waterfront" to factor
+  dmap_at("waterfront", as.factor) %>%
+  mutate(
+    years_since_renovation = ifelse(yr_renovated == 0, 0, yr_renovated - yr_built),
+    sale_year = year(date), 
+    sale_month = month(date), 
+    yard_size = sqft_lot - sqft_living,
+    house_age = sale_year - yr_built,
+    sale_season = ifelse(sale_month <= 4, "Winter", 
+                    ifelse(sale_month <= 5, "Spring",
+                           ifelse(sale_month <= 8, "Summer", 
+                                  ifelse(sale_month <= 12, "Fall")))),
+    
+    size_vs_neighbors = sqft_living/sqft_living15,
+    price_per_sqft = price/sqft_living
+  ) %>%
+  # Remove extraneoys variables 
+  select(-c(id, date, yr_built, yr_renovated, zipcode, lat, long, sale_year, sale_month, 
+         price_per_sqft, size_vs_neighbors))
+```
+
+##Added Features
+
+SARAH:
+- Median income
+- School District rating (is easy)
+- other useful things 
+
+##Data Splitting 
+
+We split our data to include 80% training and 20% validation sets. 
+```{r}
+# Split data into train and validation sets 
+percent_in_train <- 0.7
+train_indicies <- sample(nrow(df), size = percent_in_train*nrow(df))
+train <- df[train_indicies, ]
+validation <- df[-train_indicies, ]
+```
+
+##Data  Preprocessing
+
+We center and scale the predictors in order to apply regularization 
+techniques during the modeling phase. 
+```{r}
+# Define pre-processing steps to apply to training data
+preProcessSteps <- c("center", "scale")
+# Apply same pre-processing steps to validation set
+preProcessObject <- preProcess(train, method = preProcessSteps)
+train <- predict(preProcessObject, train)
+validation <- predict(preProcessObject, validation)
+```
+
+#Regression
+
+We first aim to build a predictive model of `home price`. To do so,
+we perform recusrive feature elimination to select our feature set,
+fit 5 different predictive models using 10-fold cross-validation, 
+then evaluate their performance on a held-out validation set to estimate the 
+generalization error. 
+
+##Feature Selection
+
+We perform feature selection using recursive feature elimination
+with 10-fold cross-validation. This method uses the 
+`rfFuncs` parameter, which uses random forests to remove 
+variables with low variable importance.
+```{r}
+set.seed(1234)
+rfe.cntrl <- rfeControl(functions = rfFuncs,
+                      method = "cv",
+                      number = 10)
+
+train.cntrl <- trainControl(selectionFunction = "oneSE")
+
+# Commented out to speed up runtime 
+# rfe.results <- rfe(price~., train,
+#                rfeControl = rfe.cntrl,
+#                preProc = preProcessSteps,
+#                metric = "RMSE",
+#               trControl = train.cntrl)
+rfe.results <- read_rds("../models/rfe.results.rds")
+```
+
+The following table shows that recursive feature selection 
+chooses all `r rfe.results[["results"]]$Variables[which.min(rfe.results[["results"]]$RMSE)]`
+variables to include in subsequent model building.
+```{r}
+print(rfe.results)
+```
+
+The procedure selects `r rfe.results[["results"]]$Variables[which.max(rfe.results[["results"]]$RMSE)]` variables because RMSE is minimized (see plot below):
+```{r}
+ggplot(rfe.results) +
+  labs(title = "Recursive Feature Elimination\nNumber of Variables vs. RMSE")
+```
+
+The variable importance of the predictors is shown below:
+```{r}
+data_frame(predictor = rownames(varImp(rfe.results)), 
+           var_imp = varImp(rfe.results)$Overall) %>%
+  ggplot(mapping = aes(x = reorder(predictor, var_imp), y = var_imp)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(x = "", y = "Variable Importance", 
+       title = "Recursive Feature Elimination Variable Importance")
+```
+
+We observe that house_age is, by far, the most important predictor of price
+selected via cross-validated recursive feature elimination. 
+
+##Model Fitting
+
+We define the cross-validation controls as follows: 
+```{r, echo = TRUE}
+cvCtrl <- trainControl(method = "repeatedcv", 
+                       number = 10,
+                       repeats = 3,
+                       selectionFunction = "oneSE")
+```
+
+###Ordinary Least Squares Regression 
+
+SARAH: 
+- Include 2 linear models 
+- consider interaction terms 
+- look at residuals 
+- remove outliers and update training data for future models 
+```{r}
+lm.fit1 <- lm(price~., data = train)
+# lm.fit2 SOMETHING ELSE  
+```
+
+###Elastic Net Regularized Regression Model
+```{r}
+# # Define grid of tuning parameters
+# # tuneGrid <- expand.grid(.alpha = seq(0, 1, 0.1),
+# #                          .lambda = seq(0, 0.05, by = 0.005))
+# # Fit penalized logistic regression model (elastic net)
+# set.seed(1234)
+# elastic.fit <- train(price ~ .,
+#                    data = train,
+#                    preProc = preProcessSteps,
+#                    method = "glmnet",
+#                    # tuneGrid = tuneGrid,
+#                    trControl = cvCtrl)
+elastic.fit <- read_rds("../models/elastic.fit.rds")
+```
+
+###Random Forest Model
+```{r}
+# Define tuning paramter grid
+# rfGrid <- expand.grid(.mtry = c(4,5,6,7))
+# Fit random forest model
+# set.seed(1234)
+# rf.fit <- train(price ~ .,
+#                 data = train,
+#                 preProc = preProcessSteps,
+#                 method = "rf",
+#                 tuneGrid = rfGrid,
+#                 trControl = cvCtrl)
+rf.fit <- read_rds("../models/rf.fit.rds")
+```
+
+###Gradient Boosting Machine Model
+```{r}
+# # Define grid of tuning parameters
+# gbmGrid <-  expand.grid(interaction.depth = c(1, 2, 3),
+#                         n.trees = (1:20)*100,
+#                         shrinkage = seq(.0005, .05, .005),
+#                         n.minobsinnode = 10)
+# # Fit GBM model
+# set.seed(825)
+# gbm.fit <- train(price ~ .,
+#                 data = train,
+#                 preProc = preProcessSteps,
+#                 method = "gbm",
+#                 tuneGrid = gbmGrid,
+#                 trControl = cvCtrl)
+gbm.fit <- read_rds("../models/gbm.fit.rds")
+```
+
+##Regression Evaluation 
+```{r}
+evalResults <- tibble(# LM = predict(lm.fit, newdata = validation) %>% 
+                      # rmse(sim = ., obs = validation$price),
+                      # ELASTIC = predict.train(elastic.fit, newdata = validation) %>% 
+                      # rmse(sim = ., obs = validation$price),
+                      RF = predict.train(rf.fit, newdata = validation) %>% 
+                        rmse(sim = ., obs = validation$price),
+                      GBM = predict.train(gbm.fit, newdata = validation) %>% 
+                        rmse(sim = ., obs = validation$price))
+
+evalResults %>%
+  gather(model_type, rmse, RF:GBM) %>%
+  ggplot(mapping = aes(x = model_type, y = rmse)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = scales::dollar)
+```
+
+#Classification
+
+SARAH: 
+- Add 2 logistic regression models 
+```{r}
+# logit.fit1
+# logit.fit2
+```
+
+SAM: 
+- Add SVM, GBM, RF 
+- Use missclassification error 
+
+
