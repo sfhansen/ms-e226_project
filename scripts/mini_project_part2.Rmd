@@ -207,18 +207,14 @@ lm.fit1 <- lm(price~., data = train_selected_vars)
 
 ###Elastic Net Regularized Regression Model
 ```{r}
-# # Define grid of tuning parameters
-# # tuneGrid <- expand.grid(.alpha = seq(0, 1, 0.1),
-# #                          .lambda = seq(0, 0.05, by = 0.005))
-# # Fit penalized logistic regression model (elastic net)
+# Fit penalized logistic regression model (elastic net)
 # set.seed(1234)
 # elastic.fit <- train(price ~ .,
-#                    data = train,
+#                    data = train_selected_vars,
 #                    preProc = preProcessSteps,
 #                    method = "glmnet",
-#                    # tuneGrid = tuneGrid,
 #                    trControl = cvCtrl)
-# elastic.fit <- read_rds("../models/elastic.fit.rds")
+elastic.fit <- read_rds("../models/elastic.fit.rds")
 ```
 
 ###Random Forest Model
@@ -253,18 +249,19 @@ to perform, and `shrinkage`, which is the learning rate. After finding the
 optimal set of parameters, we keep the model that achieves the lowest
 cross-validation error within one standard error of the minimum. 
 ```{r}
-# # Define grid of tuning parameters
+# Define grid of tuning parameters
 # gbmGrid <-  expand.grid(interaction.depth = c(1, 2, 3),
 #                         n.trees = (1:20)*100,
 #                         shrinkage = seq(.0005, .05, .005),
 #                         n.minobsinnode = 10)
 # # Fit GBM model
-# set.seed(825)
+# set.seed(1234)
 # gbm.fit <- train(price ~ .,
-#                 data = selected_vars,
+#                 data = train_selected_vars,
 #                 preProc = preProcessSteps,
 #                 method = "gbm",
 #                 tuneGrid = gbmGrid,
+#                 verbose = FALSE,
 #                 trControl = cvCtrl)
 gbm.fit <- read_rds("../models/gbm.fit.rds")
 ```
@@ -276,18 +273,20 @@ To compare the performance of our regression techniques, we predict the
 ```{r}
 evalResults <- tibble(# LM = predict(lm.fit, newdata = validation) %>% 
                       # rmse(sim = ., obs = validation$price),
-                      # ELASTIC = predict.train(elastic.fit, newdata = validation) %>% 
-                      # rmse(sim = ., obs = validation$price),
+                      ELASTIC = predict.train(elastic.fit, newdata = validation) %>%
+                        rmse(sim = ., obs = validation$price),
                       RF = predict.train(rf.fit, newdata = validation) %>% 
                         rmse(sim = ., obs = validation$price),
                       GBM = predict.train(gbm.fit, newdata = validation) %>% 
                         rmse(sim = ., obs = validation$price))
 
 evalResults %>%
-  gather(model_type, rmse, RF:GBM) %>%
-  ggplot(mapping = aes(x = model_type, y = rmse)) +
+  gather(model_type, rmse, ELASTIC:GBM) %>%
+  ggplot(mapping = aes(x = reorder(model_type, desc(rmse)), y = rmse)) +
   geom_bar(stat = "identity") +
-  scale_y_continuous(labels = scales::dollar)
+  scale_y_continuous() +
+  labs(x = "Model Type", y = "Validation RMSE", 
+       title = "Validation RMSE by Model Type")
 ```
 
 SAM: 
