@@ -143,7 +143,7 @@ rfe.results <- read_rds("../models/rfe.results.rds")
 ```
 
 The following table shows that recursive feature selection 
-chooses all `r rfe.results[["results"]]$Variables[which.min(rfe.results[["results"]]$RMSE)]`
+chooses `r rfe.results[["results"]]$Variables[which.min(rfe.results[["results"]]$RMSE)]`
 variables to include in subsequent model building.
 ```{r}
 print(rfe.results)
@@ -292,6 +292,7 @@ evalResults %>%
 
 SAM: 
 - SUMMARIZE FINDINGS HERE
+
 #Classification
 
 SARAH: 
