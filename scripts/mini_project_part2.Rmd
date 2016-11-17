@@ -18,13 +18,16 @@ library(knitr)
 library(caret)
 library(tidyverse)
 # Define input file
+zipcode_file <- "../zipcode_stats.csv"
 file_in <- "../data/train.csv"
 ```
 
 ```{r}
 # Read in data
+zipcode_data <- read.csv(zipcode_file)
 df <- read_csv(file_in) %>%
-  dmap_at("date", ~ymd(.x))
+  dmap_at("date", ~ymd(.x)) %>%
+  left_join(read.csv(zipcode_file))
 ```
 
 #Summary 
