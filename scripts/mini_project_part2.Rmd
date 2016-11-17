@@ -24,12 +24,10 @@ file_in <- "../data/train.csv"
 
 ```{r}
 # Read in data
-zipcode_data <- read.csv(zipcode_file)
 df <- read_csv(file_in) %>%
   dmap_at("date", ~ymd(.x)) %>%
   left_join(select(read.csv(zipcode_file), zipcode, median_household_income))
-```
-
+``
 #Summary 
 
 In part 2 of our mini-project, we built regression and classification models of 
@@ -42,6 +40,7 @@ This section describes the steps we took to engineer features, include
 external variables, split, and preprocess our data prior to model building.
 
 ##Feature Engineering 
+
 Prior to model building, we engineered the following features from 
 raw values:
 
@@ -75,10 +74,17 @@ df <- df %>%
 We added median income by zipcode as a feature. The income data comes
 from the US Census Bureau's American Community Survey (ACS), a continual
 survey used to help allocate federal funding.
+To enhance our predictive models, we researched the median household incomes 
+for zipcodes in Cook County, and joined this variable into our data frame. 
+We hypothesized median household income is predictive of home price because 
+wealthier families tend to live in pricier housing areas. 
 
 ##Data Splitting 
 
-We split our data to include 80% training and 20% validation sets. 
+In order to obtain estimates of generalization error, we split our data to 
+include 80% training and 20% validation sets. We fit all regression and 
+classification models on the training data and evaluate their performance 
+on the held-out validation set. 
 ```{r}
 # Split data into train and validation sets 
 percent_in_train <- 0.7
@@ -89,11 +95,15 @@ validation <- df[-train_indices, ]
 
 ##Data  Preprocessing
 
-We center and scale the predictors in order to apply regularization 
-techniques during the modeling phase. 
+Several variables are on largely different scales; for instance, `home price` 
+varies in dollar amounts from \$75,000 to \$7,700,000, whereas 
+`number of bathrooms` ranges from 0 to 8. In turn, we center and scale the 
+predictors in order to apply regularization techniques during the modeling 
+phase. Further, we impute the few missing values of `median household income`
+with the column median.
 ```{r}
 # Define pre-processing steps to apply to training data
-preProcessSteps <- c("center", "scale")
+preProcessSteps <- c("center", "scale", "medianImpute")
 # Apply same pre-processing steps to validation set
 preProcessObject <- preProcess(train, method = preProcessSteps)
 train <- predict(preProcessObject, train)
@@ -115,6 +125,7 @@ with 10-fold cross-validation. This method uses the
 `rfFuncs` parameter, which uses random forests to remove 
 variables with low variable importance.
 ```{r}
+<<<<<<< HEAD
 set.seed(1234)
 rfe.cntrl <- rfeControl(functions = rfFuncs,
                       method = "cv",
@@ -123,16 +134,25 @@ rfe.cntrl <- rfeControl(functions = rfFuncs,
 train.cntrl <- trainControl(selectionFunction = "oneSE")
 
 #Commented out to speed up runtime
-rfe.results <- rfe(price~., train,
-               rfeControl = rfe.cntrl,
-               preProc = preProcessSteps,
-               metric = "RMSE",
-              trControl = train.cntrl)
-#rfe.results <- read_rds("../models/rfe.results.rds")
+# set.seed(1234)
+# rfe.cntrl <- rfeControl(functions = rfFuncs,
+#                       method = "cv",
+#                       number = 5)
+# 
+# train.cntrl <- trainControl(selectionFunction = "oneSE")
+# num_vars <- c(5,10,12,14,16)
+# # Commented out to speed up runtime 
+# rfe.results <- rfe(price~., train %>% select(-price_over_median),
+#                rfeControl = rfe.cntrl,
+#                preProc = preProcessSteps,
+#                sizes = num_vars,
+#                metric = "RMSE",
+#                trControl = train.cntrl)
+rfe.results <- read_rds("../models/rfe.results.rds")
 ```
 
 The following table shows that recursive feature selection 
-chooses all `r rfe.results[["results"]]$Variables[which.min(rfe.results[["results"]]$RMSE)]`
+chooses `r rfe.results[["results"]]$Variables[which.min(rfe.results[["results"]]$RMSE)]`
 variables to include in subsequent model building.
 ```{r}
 print(rfe.results)
@@ -155,16 +175,30 @@ data_frame(predictor = rownames(varImp(rfe.results)),
        title = "Recursive Feature Elimination Variable Importance")
 ```
 
-We observe that house_age is, by far, the most important predictor of price
-selected via cross-validated recursive feature elimination. 
+We observe that `median household income` is, by far, the most important 
+predictor of price selected via cross-validated recursive feature elimination. 
+This technique selects the following variables for model building: 
+```{r}
+(selected_vars <- map(predictors(rfe.results), ~str_match(.x, names(df))) %>% 
+  unlist() %>% 
+  .[!is.na(.)] %>%
+  unique())
+train_selected_vars <- train %>%
+  select(one_of(selected_vars), price)
+```
 
 ##Model Fitting
 
-We define the cross-validation controls as follows: 
+Having selected the features to include in our models, we define univseral
+cross-validation parameters to apply to in all modeling techniques. 
+Specifically, models that require tuning parameters will select the optimal 
+parameter set by undergoing 10-fold cross-validation and applying 
+the "one-standard error rule." In other words, this approach will select
+the simplest parameters that obtain the minimal cross-validation error within 
+one standard error of the minimum. 
 ```{r, echo = TRUE}
-cvCtrl <- trainControl(method = "repeatedcv", 
+cvCtrl <- trainControl(method = "cv", 
                        number = 10,
-                       repeats = 3,
                        selectionFunction = "oneSE")
 ```
 
@@ -176,7 +210,7 @@ SARAH:
 - look at residuals 
 - remove outliers and update training data for future models 
 ```{r}
-lm.fit1 <- lm(price~., data = train)
+lm.fit1 <- lm(price~., data = train_selected_vars)
 # lm.fit2 SOMETHING ELSE  
 ```
 
@@ -193,17 +227,23 @@ lm.fit1 <- lm(price~., data = train)
 #                    method = "glmnet",
 #                    # tuneGrid = tuneGrid,
 #                    trControl = cvCtrl)
-elastic.fit <- read_rds("../models/elastic.fit.rds")
+# elastic.fit <- read_rds("../models/elastic.fit.rds")
 ```
 
 ###Random Forest Model
+
+Given that the population model of `home price` may be nonlinear, 
+we built a random forest predictive model, which is a tree-based ensemble 
+technique. We use 10-fold cross-validation to select the optimal `mtry` 
+parameter, which represents the number of random variables to select 
+when fitting each tree. 
 ```{r}
-# Define tuning paramter grid
-# rfGrid <- expand.grid(.mtry = c(4,5,6,7))
-# Fit random forest model
+# # Define tuning paramter grid
+# rfGrid <- expand.grid(.mtry = c(3,4,5,6))
+# # Fit random forest model
 # set.seed(1234)
 # rf.fit <- train(price ~ .,
-#                 data = train,
+#                 data = train_selected_vars,
 #                 preProc = preProcessSteps,
 #                 method = "rf",
 #                 tuneGrid = rfGrid,
@@ -212,6 +252,15 @@ rf.fit <- read_rds("../models/rf.fit.rds")
 ```
 
 ###Gradient Boosting Machine Model
+
+We also fit a gradient boosting machine, which is also tree-based method
+that combines an ensemble of weak learners into one strong learner. 
+We use cross-validation to perform a grid search over three parameters:
+`interaction.depth`, which represents the maximum number of splits each tree 
+can have, `n.trees`, which represents the number of boosting iterations
+to perform, and `shrinkage`, which is the learning rate. After finding the 
+optimal set of parameters, we keep the model that achieves the lowest
+cross-validation error within one standard error of the minimum. 
 ```{r}
 # # Define grid of tuning parameters
 # gbmGrid <-  expand.grid(interaction.depth = c(1, 2, 3),
@@ -221,7 +270,7 @@ rf.fit <- read_rds("../models/rf.fit.rds")
 # # Fit GBM model
 # set.seed(825)
 # gbm.fit <- train(price ~ .,
-#                 data = train,
+#                 data = selected_vars,
 #                 preProc = preProcessSteps,
 #                 method = "gbm",
 #                 tuneGrid = gbmGrid,
@@ -230,6 +279,9 @@ gbm.fit <- read_rds("../models/gbm.fit.rds")
 ```
 
 ##Regression Evaluation 
+
+To compare the performance of our regression techniques, we predict the 
+`price` of homes in the held-out validation set. 
 ```{r}
 evalResults <- tibble(# LM = predict(lm.fit, newdata = validation) %>% 
                       # rmse(sim = ., obs = validation$price),
@@ -246,6 +298,9 @@ evalResults %>%
   geom_bar(stat = "identity") +
   scale_y_continuous(labels = scales::dollar)
 ```
+
+SAM: 
+- SUMMARIZE FINDINGS HERE
 
 #Classification
 
@@ -372,3 +427,11 @@ evalResults %>%
   facet_wrap(~model_type, labeller = labeller(model_type = model_labels))
 ```
 
+
+
+```{r}
+# EXTRA: CORRELATION PLOT
+# library(corrplot)
+# M <- cor(df %>% select(-c(waterfront, sale_season)), use = "pairwise.complete.obs")
+# corrplot(M, method="number")
+```
