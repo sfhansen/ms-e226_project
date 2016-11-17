@@ -27,7 +27,7 @@ file_in <- "../data/train.csv"
 zipcode_data <- read.csv(zipcode_file)
 df <- read_csv(file_in) %>%
   dmap_at("date", ~ymd(.x)) %>%
-  left_join(read.csv(zipcode_file))
+  left_join(select(read.csv(zipcode_file), zipcode, median_household_income))
 ```
 
 #Summary 
@@ -66,16 +66,15 @@ df <- df %>%
     # Defines binary response variable 
     price_over_median = ifelse(price > median(price), 1, 0)
   ) %>%
-  # Remove extraneoys variables 
+  # Remove extraneous variables 
   select(-c(id, date, yr_built, yr_renovated, zipcode, lat, long, sale_year, sale_month))
 ```
 
 ##Added Features
 
-SARAH:
-- Median income
-- School District rating (is easy)
-- other useful things 
+We added median income by zipcode as a feature. The income data comes
+from the US Census Bureau's American Community Survey (ACS), a continual
+survey used to help allocate federal funding.
 
 ##Data Splitting 
 
@@ -83,9 +82,9 @@ We split our data to include 80% training and 20% validation sets.
 ```{r}
 # Split data into train and validation sets 
 percent_in_train <- 0.7
-train_indicies <- sample(nrow(df), size = percent_in_train*nrow(df))
-train <- df[train_indicies, ]
-validation <- df[-train_indicies, ]
+train_indices <- sample(nrow(df), size = percent_in_train*nrow(df))
+train <- df[train_indices, ]
+validation <- df[-train_indices, ]
 ```
 
 ##Data  Preprocessing
@@ -123,13 +122,13 @@ rfe.cntrl <- rfeControl(functions = rfFuncs,
 
 train.cntrl <- trainControl(selectionFunction = "oneSE")
 
-# Commented out to speed up runtime 
-# rfe.results <- rfe(price~., train,
-#                rfeControl = rfe.cntrl,
-#                preProc = preProcessSteps,
-#                metric = "RMSE",
-#               trControl = train.cntrl)
-rfe.results <- read_rds("../models/rfe.results.rds")
+#Commented out to speed up runtime
+rfe.results <- rfe(price~., train,
+               rfeControl = rfe.cntrl,
+               preProc = preProcessSteps,
+               metric = "RMSE",
+              trControl = train.cntrl)
+#rfe.results <- read_rds("../models/rfe.results.rds")
 ```
 
 The following table shows that recursive feature selection 
