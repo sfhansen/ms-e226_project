@@ -43,6 +43,7 @@ This section describes the steps we took to engineer features, include
 external variables, split, and preprocess our data prior to model building.
 
 ##Feature Engineering 
+
 Prior to model building, we engineered the following features from 
 raw values:
 
@@ -95,11 +96,11 @@ validation <- df[-train_indicies, ]
 ##Data  Preprocessing
 
 Several variables are on largely different scales; for instance, `home price` 
-varies in dollar amounts from \$MIN to \$MAX, whereas `number of bathrooms` 
-ranges from 1 to 9. In turn, we center and scale the predictors in order to 
-apply regularization techniques during the modeling phase. Further, we 
-impute the few missing values of `median household income` with the column 
-median.
+varies in dollar amounts from \$75,000 to \$7,700,000, whereas 
+`number of bathrooms` ranges from 0 to 8. In turn, we center and scale the 
+predictors in order to apply regularization techniques during the modeling 
+phase. Further, we impute the few missing values of `median household income`
+with the column median.
 ```{r}
 # Define pre-processing steps to apply to training data
 preProcessSteps <- c("center", "scale", "medianImpute")
