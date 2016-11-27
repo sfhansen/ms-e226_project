@@ -1,0 +1,342 @@
+---
+title: "MS&E 226 Mini-Project Part 3"
+author: "Samuel Hansen & Sarah Rosston"
+date: "11/27/2016"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, 
+                      cache = TRUE, fig.width = 6, fig.height = 3)
+```
+
+```{r}
+# Initialize libraries
+library(hydroGOF)
+library(lubridate)
+library(caret)
+library(boot)
+library(tidyverse)
+
+# Define input files
+zipcode_file <- "../zipcode_stats.csv"
+test_file_in <- "../data/test.csv"
+train_scaled_file_in <- "../data/train_scaled.rds"
+selected_vars_file_in <- "../models/selected_vars.rds"
+preProcessObject_file_in <- "../models/preProcessObject.rds"
+rf_fit_file_in <- "../models/rf.fit.rds"
+rf_class_fit_file_in <- "../models/rf.class.fit.rds"
+
+# Read in scaled train data
+train <- read_rds(train_scaled_file_in)
+
+# Read in test data and perform data cleaning
+test <- read_csv(test_file_in) %>%
+  dmap_at("date", ~ymd(.x)) %>%
+  
+  # Join in median income data 
+  left_join(read_csv(zipcode_file)) %>%
+  dmap_at("median_household_income", as.double) %>%
+  select(-X3)  %>%
+  
+  # Recode "waterfront" to factor
+  dmap_at("waterfront", as.factor) %>%
+  
+  # Perform feature engineering 
+  mutate(
+    years_since_renovation = ifelse(yr_renovated == 0, 0, yr_renovated - yr_built),
+    sale_year = year(date), 
+    sale_month = month(date), 
+    house_age = sale_year - yr_built,
+    sale_season = ifelse(sale_month <= 4, "Winter", 
+                    ifelse(sale_month <= 5, "Spring",
+                           ifelse(sale_month <= 8, "Summer", 
+                                  ifelse(sale_month <= 12, "Fall")))),
+    
+    # Define binary response variable 
+    price_over_median = ifelse(price > median(price), "yes", "no")
+  ) %>%
+  
+  # Remove extraneous variables 
+  select(-c(id, date, yr_built, yr_renovated, zipcode, lat, long, sale_year, sale_month))
+```
+
+#Summary
+
+In part 3 of our mini-project, we evaluated the performance of our 
+regression and classification models of home price on a held-out test set. 
+Further, we fitted linear models to the train and test sets, from which we 
+employ inference techniques to analyze the significance and spread of our 
+coefficient estimates.
+
+#Prediction on the Test Set
+
+Before evaluating the test error from our regression and classification models,
+we applied the same scaling and variable transformations from the training
+set to the test set. To do so, we used the same column means and standard 
+deviations from the training set to center and scale the test set. 
+
+```{r}
+# Apply scaling from training set to test set 
+preProcessObject <- read_rds(preProcessObject_file_in)
+test <- predict(preProcessObject, test)
+```
+
+In part 2 of our mini-project, we found that random forest regression and 
+classification models yielded the smallest validation error out of all
+models tested. We chose these as our "best" models, and evaluated them on 
+a held-out test set. Fig. XX compares our *estimates* of the test error
+obtained from predicting the validation set along with the *true* test errors. 
+We observe that the validation error was an underestimate of the test error
+in both the regression and classification models. Nevertheless, we observe 
+that our random forest classifier is still fairly accurate, obtaining an 87% 
+accuracy on the test set. 
+
+```{r}
+# Load in best regression and classification models 
+rf.fit <- read_rds(rf_fit_file_in)
+rf.class.fit <- read_rds(rf_class_fit_file_in)
+
+# Compute tibble of errors
+results <- data_frame(
+  data_source = c("Validation", "Validation", "Test", "Test"),
+  model_type = c("Regression", "Classification", "Regression", "Classification"),
+  error = c(0.337, 
+            0.055, 
+            predict(rf.fit, newdata = test) %>% rmse(sim = ., obs = test$price),
+            data.frame(price_over_median = test %>% 
+                                     select(price_over_median)) %>%
+            bind_cols(data.frame(pred_class = 
+                                   predict(rf.class.fit, test, type = "raw"))) %>%
+            summarise(missclass_error = 
+                        1 - mean(price_over_median == pred_class)) %>%
+            c() %>%
+            .$missclass_error
+            )
+)
+
+# Make barplot comparing errors 
+results %>% 
+  ggplot(mapping = aes(x = data_source, y = error)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~model_type, scales = "free") +
+  labs(x = "Data Source", y = "Missclass. Error for Classification,\nRMSE for Regression",
+       title = "Test error by Model Type and Data Source")
+
+
+```
+
+#Inference 
+
+```{r}
+selected_vars <- read_rds(selected_vars_file_in)
+```
+
+To perform inference, we used a linear regression model that only includes
+the `r length(selected_vars)` features selected by recursive feature elimination
+on the training set from part 2 of our mini-project. These features represent
+the subset that minimized 10-fold cross-validation error according to the 
+one-standard error rule. Note that these features are scaled. 
+
+##A: Coefficients from Linear Model on Training Set 
+
+A linear regression model fit to the training set yields the following 
+coefficients:
+```{r}
+lm.train.fit <- lm(price~., data = train %>%
+  select(one_of(selected_vars), price))
+# summary(lm.train.fit)
+```
+
+Nearly all features have statistically significant p-values, meaning 
+there is low probability of observing the data, given the null hypothesis 
+was true. For instance, `median household income` has $p < 2e^{-16}$, meaning
+the probability that we observed the data with *no relationship* between `price`
+and `median household income` is less than $2e^{-16}$. 
+
+The features that exhibit the most statistically significant relationships
+with `price` are `median_household_income`, `house_age`, `grade`, 
+`living area square footage`, `view`, and `waterfront`, which all have 
+$p < 2e^{-16}$. These results are consistent with intuition because pricier
+homes are often large, overlooking waterfront views, and located in wealthy zip
+codes. Further it seems reasonable that cheaper homes tend to be smaller 
+compared to their neighbors. The only surprising result is that older homes
+tend to be more expensive; however, this may be due to the location of older 
+homes in coveted properties (i.e. near city centers). Taken together, the 
+features with the most significant coefficients tell a plausible story. 
+
+##B: Coefficients from Linear Model on Test Set 
+
+Next, we fit a linear regression model with the same features on the test set.
+The most significant coefficients (i.e. those with $p < 2e^{-16}$), are the 
+**same** as those obtained from fitting the linear model on the training set. 
+
+However, weakly significant coefficients such as `basement square feet` and 
+`ratio of living area square feet to 15 neighbors` had slightly different 
+p-values compared to those from the training set model. The biggest change
+is that `lot size ratio to neighbors` (i.e. `sqft_lot15`) dropped from 
+$p < 1.25e{-08}$ in the training set model to $p < 0.061485$ in the test set 
+model. This is likely because `sqft_lot15` is collinear with `sqft_living15`, 
+`sqft_lot`, and `sqft_living`, which is turn, yields unstable coefficient 
+and p-value estimates. 
+
+```{r}
+lm.test.fit <- lm(price~., data = test %>%
+  select(one_of(selected_vars), price))
+# summary(lm.test.fit)
+```
+
+##C: Bootstrapped Confidence Intervals SARAH
+
+We fit linear models to 1000 bootstrapped samples of the training data
+to estimate the standard error of the coefficients. 
+
+```{r}
+# Define bootstrap function 
+boot.fn = function(input_data,index){
+  return(coef(lm(price~., data = input_data, subset = index)))
+}
+
+# Fit linear models to 1000 bootstrap samples to estimate std. error 
+ITERATIONS = 1000
+set.seed(1)
+lm.bootstrap = boot(data = train %>% select(one_of(selected_vars), price), 
+                 statistic = boot.fn, 
+                 R = ITERATIONS)
+# print(lm.bootstrap)
+```
+
+**COMMENT ON DIFFERENCES BETWEEN REGRESSION OUTPUT AND BOOTSTRAP OUTPUT**
+
+"Use the bootstrap to estimate confidence intervals for each of your regression coefficients.
+Do the results differ from what R gave you in its standard regression output? Again, explain
+any differences that you found, and reflect on why they might be there."
+
+Additionally, we constructed 95% confidence intervals for each of the 
+regression coefficients, which are shown in the plot below. 
+
+```{r}
+summary(lm.bootstrap) %>%
+  bind_cols(data_frame(variable = names(lm.train.fit$coefficients))) %>%
+  mutate(confint_2.5 = original - bootSE,
+         confint_97.5 = original + bootSE) %>%
+  ggplot(mapping = aes(x = reorder(variable, original), y = original)) +
+  geom_point() +
+  geom_errorbar(mapping = aes(ymax = confint_97.5, ymin = confint_2.5)) +
+  coord_flip() +
+  labs(x = "", y = "Coefficient Estimate", 
+       title = "Bootstrapped 95% Confidence Interval of Coef. Estimate")
+  
+```
+
+
+##D: Comparison to Full Model 
+
+Since our original linear model only included a subset of the predictors, we fit 
+another linear regression model to include *all* features in the 
+training set. The most significant coefficients
+(i.e. those with $p < 2e^{-16})$ from the original model are also the most 
+significant coefficients in the full model. The fact that the most significant
+coefficients *did not change* suggests our sparser model is 
+correctly capturing important signals present in the full model. 
+
+Because more features were included in the full model, we also observe 
+several new features that exhibit highly significant relationships 
+with `home price`, including `number of bedrooms` and `number of bathrooms`. 
+It is consistent with intuition that these variables would be significantly
+related to `home price`; however, they were omitted in our original model 
+because recursive feature elimination determined they did not contribute 
+enough signal to warrant inclusion. 
+
+
+```{r}
+lm.train.all.fit <- lm(price~., data = train %>% select(-price_over_median))
+# summary(lm.train.all.fit)
+```
+
+##E: Potential Problems with Linear Model SARAH 
+
+Comment on potential problems with your analysis, including collinearity, multiple hypothesis
+testing, or post-selection inference; be specific. For example: what evidence suggests to
+you that collinearity is impacting your results? For multiple hypothesis testing, suggest how
+applying the Bonferroni correction would change your interpretation of significant coeffi-
+cients. For post-selection inference, suggest aspects of your model-building and inference
+process that might bias your determination of which coefficients are significant.
+
+##F: Causal Relationships SARAH
+
+For the relationships that you found that are significant, would you be willing to interpret
+them as causal relationships? If not, why not? What other covariates do you think might be
+confounding your ability to infer causal relationships?
+
+#Discussion 
+
+##A: Practical Applications
+
+Practically speaking, our random forest regression model would be best suited 
+for predicting `home price` because it achieves relatively low generalization
+error on unseen data. A home-buyer or realtor in the Seattle area would benefit
+from obtaining a rough estimate of the price of a home prior to buying or 
+selling. However, the random forest model is a "black box," meaning 
+one cannot determine the degree to which particular features contribute to home
+price. Instead, one could use our original linear model to infer
+how various features of a home relate to its price. For instance, our linear
+model provides several statistically significant heuristics: expensive homes 
+tend to be older, larger, located in wealthy areas, and overlook the water. 
+Such information could guide home-buyers on where to find homes within budget. 
+However, a likely pitfall would be using our models for prediction or inference 
+with data from another region. Indeed, the scope of our models are limited to 
+King County in Washington. 
+
+##B: Model Refitting
+
+Our models should be refitted when the training data fails to account for 
+price fluctuations in the King County housing market. For instance, if 
+the housing market underwent a sudden shock (e.g. from a earthquake), our 
+models, which are trained on historical data, would not generalize well. 
+Similarly, if the housing market underwent a recession, our models 
+would likely systematically overestimate home prices, resulting
+in increased error. Our models should be refitted immediately after such 
+extreme events so that the training data better resemble the test data. 
+
+We also inspected whether our data exhibited seasonal trends in home sale 
+prices to assess whether predictive models should be constructed over smaller
+periods. As shown in Fig. 1, there is no discernible difference 
+in home price over the 12 months for which data were collected. This suggests
+it was appropriate to build models using data from the entire year. However, 
+data collected over a larger time frame may reveal temporal trends. To account
+for such trends, predictive models should be augmented to include time-series 
+information, or fit on data that does not exhibit temporal trends. 
+
+![Distribution of King County Home Price over 12 Months in 2014.](../output/price_by_month.png)
+
+##C: Caveats
+
+Are there choices you made in your data analysis, that you would want to make sure any
+one (e.g., a manager, a client, etc.) that uses your models is aware of? Examples here might
+include approaches to data cleaning; data transformations that you chose; vulnerability to
+overfitting, multiple hypothesis testing, or post-selection inference; etc.
+
+##D: Data Collection
+
+There are several external features that could improve model 
+performance. First, `school district rating` would likely be predictive of home
+price because home-buyers typically want to send their children to good schools.
+In turn, demand for homes in good school districts is higher, which is often
+associated with higher homes prices. Second, it would be useful to know how 
+long a home has been on the market before its sale. Undesirable homes are
+typically on the market for much longer than desirable ones, that likely 
+spend less time on the market. Third, given that many homes in the data set 
+are located in urban centers, it would be valuable to know the distance to the 
+nearest transportation hub for each home. Home-buyers often value the convenience 
+of local transportation options, so homes closer to bus or subway stops may be 
+more expensive. Taken together, these features may add predictive power
+to future models. 
+
+##E: Different Approaches SARAH
+
+If you were to attack the same data set again, what would you do differently?
