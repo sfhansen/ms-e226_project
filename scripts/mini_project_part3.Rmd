@@ -133,7 +133,10 @@ results %>%
 #Inference 
 
 ```{r}
-selected_vars <- read_rds(selected_vars_file_in)
+#selected_vars <- read_rds(selected_vars_file_in)
+selected_vars <- c("waterfront", "grade", "sqft_living",
+                   "house_age", "median_household_income",
+                   "sqft_living15", "sqft_lot15")
 ```
 
 To perform inference, we used a linear regression model that only includes
@@ -190,7 +193,7 @@ lm.test.fit <- lm(price~., data = test %>%
 # summary(lm.test.fit)
 ```
 
-##C: Bootstrapped Confidence Intervals SARAH
+##C: Bootstrapped Confidence Intervals
 
 We fit linear models to 1000 bootstrapped samples of the training data
 to estimate the standard error of the coefficients. 
@@ -207,31 +210,84 @@ set.seed(1)
 lm.bootstrap = boot(data = train %>% select(one_of(selected_vars), price), 
                  statistic = boot.fn, 
                  R = ITERATIONS)
-# print(lm.bootstrap)
+ #print(lm.bootstrap)
 ```
-
-**COMMENT ON DIFFERENCES BETWEEN REGRESSION OUTPUT AND BOOTSTRAP OUTPUT**
-
-"Use the bootstrap to estimate confidence intervals for each of your regression coefficients.
-Do the results differ from what R gave you in its standard regression output? Again, explain
-any differences that you found, and reflect on why they might be there."
 
 Additionally, we constructed 95% confidence intervals for each of the 
 regression coefficients, which are shown in the plot below. 
 
 ```{r}
-summary(lm.bootstrap) %>%
-  bind_cols(data_frame(variable = names(lm.train.fit$coefficients))) %>%
-  mutate(confint_2.5 = original - bootSE,
-         confint_97.5 = original + bootSE) %>%
-  ggplot(mapping = aes(x = reorder(variable, original), y = original)) +
-  geom_point() +
-  geom_errorbar(mapping = aes(ymax = confint_97.5, ymin = confint_2.5)) +
-  coord_flip() +
-  labs(x = "", y = "Coefficient Estimate", 
-       title = "Bootstrapped 95% Confidence Interval of Coef. Estimate")
+# summary(lm.bootstrap) %>%
+#   bind_cols(data_frame(variable = names(lm.train.fit$coefficients))) %>%
+#   mutate(confint_2.5 = original - bootSE,
+#          confint_97.5 = original + bootSE) %>%
+#   ggplot(mapping = aes(x = reorder(variable, original), y = original)) +
+#   geom_point() +
+#   geom_errorbar(mapping = aes(ymax = confint_97.5, ymin = confint_2.5)) +
+#   coord_flip() +
+#   labs(x = "", y = "Coefficient Estimate", 
+#        title = "Bootstrapped 95% Confidence Interval of Coef. Estimate")
   
 ```
+
+
+```{r}
+# data.frame(summary(lm.train.fit)$coefficients) %>%
+#   bind_cols(data_frame(variable = names(lm.train.fit$coefficients))) %>%
+#   transmute(variable = variable,
+#             confint_2.5 = Estimate  - 1.96 * Std..Error,
+#             confint_97.5 = Estimate + 1.96 * Std..Error,
+#             original_reg = Estimate) %>%
+#   ggplot(mapping = aes(x = reorder(variable, original), y = original)) +
+#   geom_point() +
+#   geom_errorbar(mapping = aes(ymax = confint_97.5, ymin = confint_2.5)) +
+#   coord_flip() +
+#   labs(x = "", y = "Coefficient Estimate", 
+#        title = "Regression 95% Confidence Interval of Coef. Estimate")
+```
+
+
+```{r}
+reg_table <- data.frame(summary(lm.train.fit)$coefficients) %>%
+  bind_cols(data_frame(variable = names(lm.train.fit$coefficients))) %>%
+  transmute(variable = variable,
+            confint_2.5_reg = Estimate  - 1.96 * Std..Error,
+            original_reg = Estimate,
+            confint_97.5_reg = Estimate + 1.96 * Std..Error)
+```
+
+```{r}
+boostrap_table <- summary(lm.bootstrap) %>%
+  bind_cols(data_frame(variable = names(lm.train.fit$coefficients))) %>%
+  mutate(confint_2.5_boot = original - bootSE,
+         confint_97.5_boot = original + bootSE,
+         original_boot = original) %>%
+  select(variable, confint_2.5_boot, original_boot, confint_97.5_boot)
+```
+
+```{r}
+inner_join(reg_table, boostrap_table)  %>%
+  ggplot(mapping = aes(x = reorder(variable, original_reg))) +
+  geom_point(aes(y = original_reg, color = "regression")) +
+  geom_point(aes(y = original_boot, color = "bootstrap")) +
+  geom_errorbar(mapping = aes(ymax = confint_97.5_reg, ymin = confint_2.5_reg, color = "regression")) +
+  geom_errorbar(mapping = aes(ymax = confint_97.5_boot, ymin = confint_2.5_boot, color = "bootstrap")) +
+  coord_flip() +
+  labs(x = "", y = "Coefficient Estimate", 
+       title = "Regression 95% Confidence Interval of Coef. Estimate")
+```
+
+
+The confidence intervals are very similar for all variables except whether
+a house is by the waterfront. For all other variable, the bootstrapped
+confidence intervals are slightly smaller than the ones found using regression.
+Because the bootstrap method of constructing confidence intervals does not rely
+on the assumption that errors are normally distributed, it makes sense that the
+confidence interval for a binary variable with relatively few observations of
+one class (only 85 homes out of the 12103 in the training set are waterfront
+homes) that the bootstrapped confidence interval would be larger. For all other
+variables, there is far more variety in the observations, so the confidence
+intervals from both regression and bootstrapping are very small.
 
 
 ##D: Comparison to Full Model 
@@ -258,20 +314,72 @@ lm.train.all.fit <- lm(price~., data = train %>% select(-price_over_median))
 # summary(lm.train.all.fit)
 ```
 
-##E: Potential Problems with Linear Model SARAH 
+##E: Potential Problems with Linear Model 
 
-Comment on potential problems with your analysis, including collinearity, multiple hypothesis
-testing, or post-selection inference; be specific. For example: what evidence suggests to
-you that collinearity is impacting your results? For multiple hypothesis testing, suggest how
-applying the Bonferroni correction would change your interpretation of significant coeffi-
-cients. For post-selection inference, suggest aspects of your model-building and inference
-process that might bias your determination of which coefficients are significant.
+Post-Selection Inference
+We performed feature selection using our training data before before fitting a
+model. The decisions to uses select features that were correlated with the
+training data means the p-values of our model on the training data are
+downwardly biased. Looking at the linear model fit on the test test would yield
+less biased results for p-values, but results in p-values with higher variance
+because the test set is much smaller than the training set. When we look at 
+p-values on the training set, we find that all variables have a p-value less
+than 0.05, but on the test set `lot size ratio to neighbors` (i.e. `sqft_lot15`)
+does not.
 
-##F: Causal Relationships SARAH
+However, weakly significant coefficients such as `basement square feet` and 
+`ratio of living area square feet to 15 neighbors` had slightly different 
+p-values compared to those from the training set model. The biggest change
+is that `lot size ratio to neighbors` (i.e. `sqft_lot15`) dropped from 
+$p < 1.25e{-08}$ in the training set model to $p < 0.061485$ in the test set 
+model. This is likely because `sqft_lot15` is collinear with `sqft_living15`, 
+`sqft_lot`, and `sqft_living`, which is turn, yields unstable coefficient 
+and p-value estimates. 
 
-For the relationships that you found that are significant, would you be willing to interpret
-them as causal relationships? If not, why not? What other covariates do you think might be
-confounding your ability to infer causal relationships?
+Collinearity
+The variables `sqft_lot15`, `sqft_living15`, `sqft_lot`, and `sqft_living` are
+collinear, which means that the estimates for coefficients on each of these
+variables are unstable as are the p-values. This collinearity could also explain
+why `sqft_lot15` was significant when we fit the model to the training set
+but when we fit it to the test set. 
+
+
+Multiple hypothesis testing
+Because we are testing the significance of multiple variables, if we simply
+consider all variables with p-values < 0.05 significant, we expect to reject
+5% of null hypotheses even when they are correct. Using the Bonferonni
+correction, we obtain the following p-values:
+```{r}
+data.frame(summary(lm.train.fit)$coefficients) %>%
+  bind_cols(data_frame(variable = names(lm.train.fit$coefficients))) %>%
+  transmute(variable = variable,
+            Correct.P =Pr...t../8,
+            Less.Than.0.05 = Correct.P < 0.05)
+```
+Even with the Bonferonni correction, all p-values are significant.
+
+
+##F: Causal Relationships
+
+For the variables waterfont, grade, sqft_living,
+and median_household_income, the coefficients are in the same direction we would
+have expected before looking at the results of model fitting. 
+Because sqft_living, sqft_living15, and sqft_lot15 are collinear, we are not
+sure which (if any) actually causes the price of a home to change, although
+sqft_living has the lowest p-value and highest coffiecient, matching what we
+would have predicted.
+For median household income, the regression coefficent shows that home prices
+increase with median household income, but this could be a cause of the
+school performance or safety in an area, both of which are positively correlated
+with median household income but were included not in our dataset.
+Waterfont and grade are far less correlated with other variables, extremely low
+p-values, and have coefficients similar to what we would have predicted before
+modeling: waterfront homes are much more expensive, and homes in better
+condition are more expensive.
+
+
+
+
 
 #Discussion 
 
@@ -337,6 +445,15 @@ of local transportation options, so homes closer to bus or subway stops may be
 more expensive. Taken together, these features may add predictive power
 to future models. 
 
-##E: Different Approaches SARAH
-
-If you were to attack the same data set again, what would you do differently?
+##E: Different Approaches
+If we were to look at this data set again, there are several things we would
+do differently. While we think the regression problem of predicting house prices
+is interesting, predicting whether a house will have a price above or below
+the median price is less interesting because the distinction is not particularly
+meaningful for the many house prices close to the median price so we would
+choose a different metric to predict in a classification problem.
+Using variable selection also makes our inferential claims weaker, as does
+collinearity, so if we had only focused on inference and not prediction we
+would have done more to reduce collinearity in our features, for example
+converting sqft_lot15 and sqft_living15 to
+sqft_nonliving15 = (sqft_lot15 - sqft_living15) and sqft_living15
