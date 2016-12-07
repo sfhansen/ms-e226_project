@@ -3,10 +3,8 @@ title: "MS&E 226 Mini-Project Part 3"
 author: "Samuel Hansen & Sarah Rosston"
 date: "11/27/2016"
 output:
-  pdf_document:
-    toc: yes
-  html_document:
-    toc: yes
+  github_document:
+    toc: true 
 ---
 
 ```{r setup, include=FALSE}
@@ -272,9 +270,10 @@ inner_join(reg_table, boostrap_table)  %>%
   geom_point(aes(y = original_boot, color = "bootstrap")) +
   geom_errorbar(mapping = aes(ymax = confint_97.5_reg, ymin = confint_2.5_reg, color = "regression")) +
   geom_errorbar(mapping = aes(ymax = confint_97.5_boot, ymin = confint_2.5_boot, color = "bootstrap")) +
+  scale_color_discrete(name = "CI Source") +
   coord_flip() +
   labs(x = "", y = "Coefficient Estimate", 
-       title = "Regression 95% Confidence Interval of Coef. Estimate")
+       title = "95% Confidence Interval of Coef. Estimate")
 ```
 
 
