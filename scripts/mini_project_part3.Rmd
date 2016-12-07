@@ -422,11 +422,14 @@ information, or fit on data that does not exhibit temporal trends.
 ![Distribution of King County Home Price over 12 Months in 2014.](../output/price_by_month.png)
 
 ##C: Caveats
-
-Are there choices you made in your data analysis, that you would want to make sure any
-one (e.g., a manager, a client, etc.) that uses your models is aware of? Examples here might
-include approaches to data cleaning; data transformations that you chose; vulnerability to
-overfitting, multiple hypothesis testing, or post-selection inference; etc.
+Someone looking at our analysis should be aware that we only have data for one
+year -- from May 2014 to May 2015 so the model likely would not generalize well
+to home prices outside that time period.
+Because our features include some collinearity, the coefficients on some
+features, particulary the two about the surrounding area, might not fully reflect
+the relationship between the home price and the feature. 
+We also performed feature selection before fitting a model, which means we might
+be overstating the correlation between the features and home price
 
 ##D: Data Collection
 
