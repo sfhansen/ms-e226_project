@@ -1,10 +1,9 @@
 ---
 title: "MS&E 226 Mini-Project Part 3"
 author: "Samuel Hansen & Sarah Rosston"
-date: "11/27/2016"
+date: "12/7/2016"
 output:
-  github_document:
-    toc: true 
+  pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -68,7 +67,7 @@ test <- read_csv(test_file_in) %>%
 In part 3 of our mini-project, we evaluated the performance of our 
 regression and classification models of home price on a held-out test set. 
 Further, we fitted linear models to the train and test sets, from which we 
-employ inference techniques to analyze the significance and spread of our 
+employed inference techniques to analyze the significance and spread of our 
 coefficient estimates.
 
 #Prediction on the Test Set
@@ -87,10 +86,10 @@ test <- predict(preProcessObject, test)
 In part 2 of our mini-project, we found that random forest regression and 
 classification models yielded the smallest validation error out of all
 models tested. We chose these as our "best" models, and evaluated them on 
-a held-out test set. Fig. XX compares our *estimates* of the test error
-obtained from predicting the validation set along with the *true* test errors. 
-We observe that the validation error was an underestimate of the test error
-in both the regression and classification models. Nevertheless, we observe 
+a held-out test set. The following figure compares our *estimates* of the test 
+error obtained from predicting the validation set along with the *true* test 
+errors. We observe that the validation error was an underestimate of the test 
+error in both the regression and classification models. Nevertheless, we observe 
 that our random forest classifier is still fairly accurate, obtaining an 87% 
 accuracy on the test set. 
 
@@ -145,15 +144,13 @@ one-standard error rule. Note that these features are scaled.
 
 ##A: Coefficients from Linear Model on Training Set 
 
-A linear regression model fit to the training set yields the following 
-coefficients:
 ```{r}
 lm.train.fit <- lm(price~., data = train %>%
   select(one_of(selected_vars), price))
 # summary(lm.train.fit)
 ```
-
-Nearly all features have statistically significant p-values, meaning 
+A linear regression model fit to the training set revealed that 
+nearly all features have statistically significant p-values, meaning 
 there is low probability of observing the data, given the null hypothesis 
 was true. For instance, `median household income` has $p < 2e^{-16}$, meaning
 the probability that we observed the data with *no relationship* between `price`
@@ -163,7 +160,7 @@ The features that exhibit the most statistically significant relationships
 with `price` are `median_household_income`, `house_age`, `grade`, 
 `living area square footage`, `view`, and `waterfront`, which all have 
 $p < 2e^{-16}$. These results are consistent with intuition because pricier
-homes are often large, overlooking waterfront views, and located in wealthy zip
+homes are often large, overlook waterfront views, and are located in wealthy zip
 codes. Further it seems reasonable that cheaper homes tend to be smaller 
 compared to their neighbors. The only surprising result is that older homes
 tend to be more expensive; however, this may be due to the location of older 
@@ -182,7 +179,7 @@ p-values compared to those from the training set model. The biggest change
 is that `lot size ratio to neighbors` (i.e. `sqft_lot15`) dropped from 
 $p < 1.25e{-08}$ in the training set model to $p < 0.061485$ in the test set 
 model. This is likely because `sqft_lot15` is collinear with `sqft_living15`, 
-`sqft_lot`, and `sqft_living`, which is turn, yields unstable coefficient 
+`sqft_lot`, and `sqft_living`, which in turn, yields unstable coefficient 
 and p-value estimates. 
 
 ```{r}
@@ -194,7 +191,9 @@ lm.test.fit <- lm(price~., data = test %>%
 ##C: Bootstrapped Confidence Intervals
 
 We fit linear models to 1000 bootstrapped samples of the training data
-to estimate the standard error of the coefficients. 
+to estimate the standard error of the coefficients. Additionally, we constructed
+95% confidence intervals for each of the regression coefficients, which are
+shown in the plot below. 
 
 ```{r}
 # Define bootstrap function 
@@ -210,9 +209,6 @@ lm.bootstrap = boot(data = train %>% select(one_of(selected_vars), price),
                  R = ITERATIONS)
  #print(lm.bootstrap)
 ```
-
-Additionally, we constructed 95% confidence intervals for each of the 
-regression coefficients, which are shown in the plot below. 
 
 ```{r}
 # summary(lm.bootstrap) %>%
@@ -277,17 +273,16 @@ inner_join(reg_table, boostrap_table)  %>%
 ```
 
 
-The confidence intervals are very similar for all variables except whether
-a house is by the waterfront. For all other variable, the bootstrapped
+The confidence intervals are very similar for all variables except for whether
+a house is by the waterfront. For all other variables, the bootstrapped
 confidence intervals are slightly smaller than the ones found using regression.
 Because the bootstrap method of constructing confidence intervals does not rely
-on the assumption that errors are normally distributed, it makes sense that the
-confidence interval for a binary variable with relatively few observations of
-one class (only 85 homes out of the 12103 in the training set are waterfront
-homes) that the bootstrapped confidence interval would be larger. For all other
-variables, there is far more variety in the observations, so the confidence
-intervals from both regression and bootstrapping are very small.
-
+on the assumption that errors are normally distributed, it makes sense that 
+the bootstrapped confidence interval would be larger for a binary variable with 
+relatively few observations of one class (only 85 homes out of the 12103 in the 
+training set are waterfront homes). For all other variables, there is far more 
+variety in the observations, so the confidence intervals from both regression 
+and bootstrapping are small.
 
 ##D: Comparison to Full Model 
 
@@ -300,7 +295,7 @@ coefficients *did not change* suggests our sparser model is
 correctly capturing important signals present in the full model. 
 
 Because more features were included in the full model, we also observe 
-several new features that exhibit highly significant relationships 
+several *new* features that exhibit highly significant relationships 
 with `home price`, including `number of bedrooms` and `number of bathrooms`. 
 It is consistent with intuition that these variables would be significantly
 related to `home price`; however, they were omitted in our original model 
@@ -315,15 +310,15 @@ lm.train.all.fit <- lm(price~., data = train %>% select(-price_over_median))
 
 ##E: Potential Problems with Linear Model 
 
-Post-Selection Inference
-We performed feature selection using our training data before before fitting a
-model. The decisions to uses select features that were correlated with the
-training data means the p-values of our model on the training data are
-downwardly biased. Looking at the linear model fit on the test test would yield
-less biased results for p-values, but results in p-values with higher variance
-because the test set is much smaller than the training set. When we look at 
-p-values on the training set, we find that all variables have a p-value less
-than 0.05, but on the test set `lot size ratio to neighbors` (i.e. `sqft_lot15`)
+###Post-Selection Inference 
+We performed feature selection using our training data before fitting a
+model. The decision to use selected features that were correlated with the
+training data implies the p-values from our model on the training data are
+downwardly biased. Inspecting the linear model fit on the test test would yield
+less biased results for p-values. However, this approach yields p-values with 
+higher variance because the test set is much smaller than the training set. 
+When we look at p-values on the training set, we find that all variables have a 
+p-value less than 0.05, but on the test set `lot size ratio to neighbors` 
 does not.
 
 However, weakly significant coefficients such as `basement square feet` and 
@@ -335,50 +330,45 @@ model. This is likely because `sqft_lot15` is collinear with `sqft_living15`,
 `sqft_lot`, and `sqft_living`, which is turn, yields unstable coefficient 
 and p-value estimates. 
 
-Collinearity
+###Collinearity
 The variables `sqft_lot15`, `sqft_living15`, `sqft_lot`, and `sqft_living` are
-collinear, which means that the estimates for coefficients on each of these
-variables are unstable as are the p-values. This collinearity could also explain
-why `sqft_lot15` was significant when we fit the model to the training set
-but when we fit it to the test set. 
+collinear, which means that coefficient estimates and p-values are unstable 
+for these variables. This collinearity could also explain why `sqft_lot15` was 
+significant when we fit the model to the training set but insignificant 
+when we fit it to the test set. 
 
-
-Multiple hypothesis testing
+###Multiple hypothesis testing
 Because we are testing the significance of multiple variables, if we simply
 consider all variables with p-values < 0.05 significant, we expect to reject
-5% of null hypotheses even when they are correct. Using the Bonferonni
-correction, we obtain the following p-values:
+5% of null hypotheses even when they are correct. However, even after applying
+the Bonferonni correction, we found that p-values remained significant for 
+variables selected via recursive feature elimination.
 ```{r}
-data.frame(summary(lm.train.fit)$coefficients) %>%
-  bind_cols(data_frame(variable = names(lm.train.fit$coefficients))) %>%
-  transmute(variable = variable,
-            Correct.P =Pr...t../8,
-            Less.Than.0.05 = Correct.P < 0.05)
+# data.frame(summary(lm.train.fit)$coefficients) %>%
+#   bind_cols(data_frame(variable = names(lm.train.fit$coefficients))) %>%
+#   transmute(variable = variable,
+#             corrected.p = Pr...t../8,
+#             less.than.0.05 = corrected.p < 0.05)
 ```
-Even with the Bonferonni correction, all p-values are significant.
-
 
 ##F: Causal Relationships
 
-For the variables waterfont, grade, sqft_living,
-and median_household_income, the coefficients are in the same direction we would
+For the variables `waterfont`, `grade`, `sqft_living`, and 
+`median_household_income`, the coefficients are in the same direction we would
 have expected before looking at the results of model fitting. 
-Because sqft_living, sqft_living15, and sqft_lot15 are collinear, we are not
-sure which (if any) actually causes the price of a home to change, although
-sqft_living has the lowest p-value and highest coffiecient, matching what we
+Because `sqft_living`, `sqft_living15`, and `sqft_lot15` are collinear, we are 
+not sure which (if any) actually causes the price of a home to change, although
+`sqft_living` has the lowest p-value and highest coefficient, matching what we
 would have predicted.
-For median household income, the regression coefficent shows that home prices
+
+For `median_household_income`, the regression coefficient shows that home prices
 increase with median household income, but this could be a cause of the
 school performance or safety in an area, both of which are positively correlated
 with median household income but were included not in our dataset.
-Waterfont and grade are far less correlated with other variables, extremely low
-p-values, and have coefficients similar to what we would have predicted before
-modeling: waterfront homes are much more expensive, and homes in better
-condition are more expensive.
-
-
-
-
+`Waterfont` and `grade` are far less correlated with other variables, have 
+extremely low p-values, and possess coefficients similar to what we would have 
+predicted before modeling: waterfront homes are much more expensive, and homes 
+in better condition are more expensive.
 
 #Discussion 
 
@@ -423,13 +413,13 @@ information, or fit on data that does not exhibit temporal trends.
 
 ##C: Caveats
 Someone looking at our analysis should be aware that we only have data for one
-year -- from May 2014 to May 2015 so the model likely would not generalize well
+year -- from May 2014 to May 2015, so the model would likely not generalize well
 to home prices outside that time period.
 Because our features include some collinearity, the coefficients on some
-features, particulary the two about the surrounding area, might not fully reflect
-the relationship between the home price and the feature. 
+features, particularly the two describing the neighboring homes, might not 
+fully reflect the relationship between home price and the feature. 
 We also performed feature selection before fitting a model, which means we might
-be overstating the correlation between the features and home price
+be overstating the correlation between the features and home price. 
 
 ##D: Data Collection
 
@@ -449,13 +439,17 @@ to future models.
 
 ##E: Different Approaches
 If we were to look at this data set again, there are several things we would
-do differently. While we think the regression problem of predicting house prices
-is interesting, predicting whether a house will have a price above or below
-the median price is less interesting because the distinction is not particularly
-meaningful for the many house prices close to the median price so we would
-choose a different metric to predict in a classification problem.
-Using variable selection also makes our inferential claims weaker, as does
-collinearity, so if we had only focused on inference and not prediction we
-would have done more to reduce collinearity in our features, for example
-converting sqft_lot15 and sqft_living15 to
-sqft_nonliving15 = (sqft_lot15 - sqft_living15) and sqft_living15
+do differently. First, we would consider a more sophisticated classification 
+response variable than whether a home is priced above or below the median price. 
+For instance, we would examine whether a home is a good "bargain" by examining
+whether its price is above or below those of the 10-15 closest homes, as 
+measured by Haversine distance from GPS coordinates. 
+
+Second, assuming inference was our main priority (as opposed to prediction), 
+we would invest more resources into reducing collinearity via better 
+feature engineering, such as converting `sqft_lot15` and `sqft_living15` to
+`sqft_nonliving15` = (`sqft_lot15` - `sqft_living15`) and `sqft_living15`.
+
+Lastly, we would invest more time engineering features from the GPS coordinates
+to include geo-spatial variables in future prediction models. 
+
