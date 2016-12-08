@@ -319,16 +319,11 @@ less biased results for p-values. However, this approach yields p-values with
 higher variance because the test set is much smaller than the training set. 
 When we look at p-values on the training set, we find that all variables have a 
 p-value less than 0.05, but on the test set `lot size ratio to neighbors` 
-does not.
-
-However, weakly significant coefficients such as `basement square feet` and 
-`ratio of living area square feet to 15 neighbors` had slightly different 
-p-values compared to those from the training set model. The biggest change
-is that `lot size ratio to neighbors` (i.e. `sqft_lot15`) dropped from 
-$p < 1.25e{-08}$ in the training set model to $p < 0.061485$ in the test set 
-model. This is likely because `sqft_lot15` is collinear with `sqft_living15`, 
-`sqft_lot`, and `sqft_living`, which is turn, yields unstable coefficient 
-and p-value estimates. 
+does not. The difference could be due to collinearity between `lot size ratio to neighbors` and other values, which leads to unstable p-value estimates and
+could explain some of the difference in p-value. Another contributing factor to
+the change could be the size of the test set, but because we performed feature
+selection on the training set before fitting a model, problems with
+post-selection inference seem to be the most likely cause of the difference.
 
 ###Collinearity
 The variables `sqft_lot15`, `sqft_living15`, `sqft_lot`, and `sqft_living` are
