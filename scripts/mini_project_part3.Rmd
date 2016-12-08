@@ -74,8 +74,8 @@ coefficient estimates.
 
 Before evaluating the test error from our regression and classification models,
 we applied the same scaling and variable transformations from the training
-set to the test set. To do so, we used the same column means and standard 
-deviations from the training set to center and scale the test set. 
+set to the test set. To do so, we used column means and standard 
+deviations calculated using the training set to center and scale the test set. 
 
 ```{r}
 # Apply scaling from training set to test set 
@@ -89,8 +89,8 @@ models tested. We chose these as our "best" models, and evaluated them on
 a held-out test set. The following figure compares our *estimates* of the test 
 error obtained from predicting the validation set along with the *true* test 
 errors. We observe that the validation error was an underestimate of the test 
-error in both the regression and classification models. Nevertheless, we observe 
-that our random forest classifier is still fairly accurate, obtaining an 87% 
+error in both the regression and classification models as we predicted in part
+2 of the mini-project. Nevertheless, we observe that our random forest classifier is still fairly accurate, obtaining an 87% 
 accuracy on the test set. 
 
 ```{r}
@@ -136,7 +136,7 @@ selected_vars <- c("waterfront", "grade", "sqft_living",
                    "sqft_living15", "sqft_lot15")
 ```
 
-To perform inference, we used a linear regression model that only includes
+To perform inference, we used a linear regression model that includes only
 the `r length(selected_vars)` features selected by recursive feature elimination
 on the training set from part 2 of our mini-project. These features represent
 the subset that minimized 10-fold cross-validation error according to the 
