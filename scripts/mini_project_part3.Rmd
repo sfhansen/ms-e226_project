@@ -90,8 +90,8 @@ a held-out test set. The following figure compares our *estimates* of the test
 error obtained from predicting the validation set along with the *true* test 
 errors. We observe that the validation error was an underestimate of the test 
 error in both the regression and classification models as we predicted in part
-2 of the mini-project. Nevertheless, we observe that our random forest classifier is still fairly accurate, obtaining an 87% 
-accuracy on the test set. 
+2 of the mini-project. Nevertheless, we observe that our random forest classifier 
+is still fairly accurate, obtaining an 87% accuracy on the test set. 
 
 ```{r}
 # Load in best regression and classification models 
@@ -174,13 +174,12 @@ The most significant coefficients (i.e. those with $p < 2e^{-16}$), are the
 **same** as those obtained from fitting the linear model on the training set. 
 
 However, weakly significant coefficients such as `basement square feet` and 
-`ratio of living area square feet to 15 neighbors` had slightly different 
+`ratio of living area square feet to 15 neighbors` had different 
 p-values compared to those from the training set model. The biggest change
 is that `lot size ratio to neighbors` (i.e. `sqft_lot15`) dropped from 
-$p < 1.25e{-08}$ in the training set model to $p < 0.061485$ in the test set 
+$p < 1.25e^{-08}$ in the training set model to $p < 0.061485$ in the test set 
 model. This is likely because `sqft_lot15` is collinear with `sqft_living15`, 
-`sqft_lot`, and `sqft_living`, which in turn, yields unstable coefficient 
-and p-value estimates. 
+`sqft_lot`, and `sqft_living`, yielding unstable coefficient and p-value estimates. 
 
 ```{r}
 lm.test.fit <- lm(price~., data = test %>%
@@ -259,7 +258,7 @@ boostrap_table <- summary(lm.bootstrap) %>%
   select(variable, confint_2.5_boot, original_boot, confint_97.5_boot)
 ```
 
-```{r}
+```{r, fig.width = 6, fig.height = 2}
 inner_join(reg_table, boostrap_table)  %>%
   ggplot(mapping = aes(x = reorder(variable, original_reg))) +
   geom_point(aes(y = original_reg, color = "regression")) +
@@ -312,32 +311,35 @@ lm.train.all.fit <- lm(price~., data = train %>% select(-price_over_median))
 
 ###Post-Selection Inference 
 We performed feature selection using our training data before fitting a
-model. The decision to use selected features that were correlated with the
-training data implies the p-values from our model on the training data are
-downwardly biased. Inspecting the linear model fit on the test test would yield
-less biased results for p-values. However, this approach yields p-values with 
-higher variance because the test set is much smaller than the training set. 
-When we look at p-values on the training set, we find that all variables have a 
+model. P-values from the model fitted on the training data are downwardly 
+biased because they reflect probabilities under the null, *after* feature 
+selection. Conversely, p-values from the model fitted on the test data 
+would be less biased because they are dissociated from the feature selection
+process. However, test set p-values have higher variance because the test set 
+is much smaller than the training set. 
+
+When we examine p-values from the training set, we find that all variables have a 
 p-value less than 0.05, but on the test set `lot size ratio to neighbors` 
-does not. The difference could be due to collinearity between `lot size ratio to neighbors` and other values, which leads to unstable p-value estimates and
-could explain some of the difference in p-value. Another contributing factor to
-the change could be the size of the test set, but because we performed feature
-selection on the training set before fitting a model, problems with
-post-selection inference seem to be the most likely cause of the difference.
+does not. This difference could be due to collinearity between 
+`lot size ratio to neighbors` and other values, which leads to unstable p-value 
+estimates. Another contributing factor to the change could be the size of the 
+test set, but because we performed feature selection on the training set before 
+fitting a model, problems with post-selection inference seem to be the most 
+likely cause of the difference in p-values between training and test data.
 
 ###Collinearity
 The variables `sqft_lot15`, `sqft_living15`, `sqft_lot`, and `sqft_living` are
-collinear, which means that coefficient estimates and p-values are unstable 
+collinear, implying coefficient estimates and p-values are unstable 
 for these variables. This collinearity could also explain why `sqft_lot15` was 
 significant when we fit the model to the training set but insignificant 
 when we fit it to the test set. 
 
 ###Multiple hypothesis testing
-Because we are testing the significance of multiple variables, if we simply
-consider all variables with p-values < 0.05 significant, we expect to reject
-5% of null hypotheses even when they are correct. However, even after applying
-the Bonferonni correction, we found that p-values remained significant for 
-variables selected via recursive feature elimination.
+Because we are testing the significance of multiple variables, if we
+considered all features with p-values < 0.05 to be significant, we would expect 
+to reject 5% of null hypotheses even when they are correct. However, even after 
+applying the Bonferonni correction, we found that p-values remained significant
+for variables selected via recursive feature elimination.
 ```{r}
 # data.frame(summary(lm.train.fit)$coefficients) %>%
 #   bind_cols(data_frame(variable = names(lm.train.fit$coefficients))) %>%
@@ -359,11 +361,19 @@ would have predicted.
 For `median_household_income`, the regression coefficient shows that home prices
 increase with median household income, but this could be a cause of the
 school performance or safety in an area, both of which are positively correlated
-with median household income but were included not in our dataset.
-`Waterfont` and `grade` are far less correlated with other variables, have 
-extremely low p-values, and possess coefficients similar to what we would have 
-predicted before modeling: waterfront homes are much more expensive, and homes 
-in better condition are more expensive.
+with median household income but were included not in our dataset. Thus, we can
+not infer a causal relationship between `median_household_income` and 
+`home price`. 
+
+However, it is reasonable to believe a causal relationship exists between the 
+binary `Waterfront` variable and `home price` because waterfront homes are 
+typically more desirable than non-waterfront homes, which increases demand 
+for them, and drives up their prices. Property taxes on waterfront homes are
+also typically higher, further increasing price. The `waterfront` variable is 
+associated with a highly significant p-value ($p < 2e^{-16}$) and is uncorrelated 
+with other variables (which avoids collinearity concerns). Taken together, 
+we believe these intuitions suggest a causal relationship to be investigated 
+in further study. 
 
 #Discussion 
 
@@ -409,10 +419,10 @@ information, or fit on data that does not exhibit temporal trends.
 ##C: Caveats
 Someone looking at our analysis should be aware that we only have data for one
 year -- from May 2014 to May 2015, so the model would likely not generalize well
-to home prices outside that time period.
+to home prices beyond that time period.
 Because our features include some collinearity, the coefficients on some
 features, particularly the two describing the neighboring homes, might not 
-fully reflect the relationship between home price and the feature. 
+fully reflect the relationship between `home price` and various features. 
 We also performed feature selection before fitting a model, which means we might
 be overstating the correlation between the features and home price. 
 
@@ -433,12 +443,11 @@ more expensive. Taken together, these features may add predictive power
 to future models. 
 
 ##E: Different Approaches
-If we were to look at this data set again, there are several things we would
-do differently. First, we would consider a more sophisticated classification 
-response variable than whether a home is priced above or below the median price. 
-For instance, we would examine whether a home is a good "bargain" by examining
-whether its price is above or below those of the 10-15 closest homes, as 
-measured by Haversine distance from GPS coordinates. 
+If we were to look at this data set again, we would first consider a more 
+sophisticated classification response variable than whether a home is priced 
+above or below the median price. For instance, we would examine whether a home 
+is a good "bargain" by examining whether its price is above or below those of 
+the 10-15 closest homes, as measured by Haversine distance from GPS coordinates. 
 
 Second, assuming inference was our main priority (as opposed to prediction), 
 we would invest more resources into reducing collinearity via better 
@@ -447,4 +456,3 @@ feature engineering, such as converting `sqft_lot15` and `sqft_living15` to
 
 Lastly, we would invest more time engineering features from the GPS coordinates
 to include geo-spatial variables in future prediction models. 
-
